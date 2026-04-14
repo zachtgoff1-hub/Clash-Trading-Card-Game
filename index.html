@@ -1799,6 +1799,8 @@ body.on-pvp .game-board{overflow:hidden!important;flex:1 1 0!important}
 .pb-bz-label{display:none!important}
 .pb-bz-sub{display:none!important}
 .pb-bz-half,.pb-bz-units,.pb-bz-cell{display:none!important}
+
+@keyframes bossGlow{0%,100%{box-shadow:0 0 12px rgba(239,68,68,.4)}50%{box-shadow:0 0 28px rgba(239,68,68,.9)}}
 </style>
 
 
@@ -1837,6 +1839,8 @@ body.on-pvp .game-board{overflow:hidden!important;flex:1 1 0!important}
     <button class="nbtn" onclick="go('v2play',this)">👥 2v2</button>
     <button class="nbtn" onclick="go('board',this)">🗺️ Board</button>
     <button class="nbtn" onclick="go('dice',this)">🎲 Dice</button>
+    <button class="nbtn" onclick="go('profile',this)">👤</button>
+    <button class="nbtn" onclick="go('story',this)">⚔ Story</button>
     <div class="nav-divider"></div>
     <button class="nbtn" onclick="go('rules',this)">📖 Rules</button>
     <button class="nbtn" onclick="go('v2v',this)">👥 2v2 Rules</button>
@@ -1880,6 +1884,28 @@ body.on-pvp .game-board{overflow:hidden!important;flex:1 1 0!important}
         <span class="hnb-text">
           <span class="hnb-title">2v2 Battle</span>
           <span class="hnb-sub">Team play — you + ally vs CPU team</span>
+        </span>
+        <span class="hnb-arrow">›</span>
+      </button>
+    </div>
+
+    </div>
+
+    <div class="home-section">
+      <div class="home-section-label">👤 Profile &amp; Campaign</div>
+      <button class="home-nav-btn play-btn" onclick="goHome('profile')" style="border-color:rgba(245,200,66,.4);background:rgba(245,200,66,.07)">
+        <span class="hnb-icon">👤</span>
+        <span class="hnb-text">
+          <span class="hnb-title" style="color:#fde68a">My Profile</span>
+          <span class="hnb-sub">Stats, win rate &amp; game history</span>
+        </span>
+        <span class="hnb-arrow">›</span>
+      </button>
+      <button class="home-nav-btn play-btn" onclick="goHome('story')" style="border-color:rgba(232,68,68,.5);background:rgba(232,68,68,.1)">
+        <span class="hnb-icon">⚔</span>
+        <span class="hnb-text">
+          <span class="hnb-title" style="color:#f87171">Story Mode</span>
+          <span class="hnb-sub">Campaign — 9 battles + final boss</span>
         </span>
         <span class="hnb-arrow">›</span>
       </button>
@@ -2533,6 +2559,22 @@ body.on-pvp .game-board{overflow:hidden!important;flex:1 1 0!important}
 
 <!-- ██ RULES ██ -->
 
+
+<div class="pg" id="pg-profile"><div class="wrap">
+<div class="sec" style="--acc:var(--el)">
+  <h1>👤 <em>Profile</em></h1>
+  <button onclick="go('home')" style="background:none;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 14px;color:rgba(255,255,255,.5);cursor:pointer;font-size:.7rem;margin-bottom:8px">🏠 Home</button>
+</div>
+<div id="profileContent" style="padding:0 4px 40px"></div>
+</div></div>
+
+<div class="pg" id="pg-story"><div class="wrap">
+<div class="sec" style="--acc:#ef4444">
+  <h1>⚔ <em>Story Mode</em></h1>
+  <button onclick="go('home')" style="background:none;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 14px;color:rgba(255,255,255,.5);cursor:pointer;font-size:.7rem;margin-bottom:8px">🏠 Home</button>
+</div>
+<div id="storyContent" style="padding:0 4px 40px"></div>
+</div></div>
 
 <div class="pg" id="pg-pvp"><div class="wrap" style="padding:6px 8px;max-width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
 <div id="pvpPassOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.97);z-index:9998;align-items:center;justify-content:center;flex-direction:column"></div>
@@ -5671,7 +5713,7 @@ function pgCpu(){
   PG.turn++;PG.player.elixir=Math.min(10,PG.player.elixir+1);gDrw(PG.player);
   PG.phase='player';pgLog('turn','YOUR TURN \u2014 Round '+PG.turn+' \u2014 '+PG.player.elixir+'\u26a1');pgRen();
 }
-function pgWin(){if(PG.cpu.king.fallen){PG.phase='win';pgLog('win','VICTORY! Storm Brigade wins!');pgRen();showEndModal(true);}else if(PG.player.king.fallen){PG.phase='lose';pgLog('die','DEFEAT. Shadow Crypt wins.');pgRen();showEndModal(false);}}
+function pgWin(){if(PG.cpu.king.fallen){PG.phase='win';pgLog('win','VICTORY! Storm Brigade wins!');pgRecordWin();if(STORY_BATTLE_ACTIVE)storyOnWin();pgRen();showEndModal(true);}else if(PG.player.king.fallen){PG.phase='lose';pgLog('die','DEFEAT. Shadow Crypt wins.');pgRecordLoss();pgRen();showEndModal(false);}}
 
 /* ========== 2v2 GAME ========== */
 var V2={};
@@ -5978,15 +6020,174 @@ function go(id,btn){
   if(id==='play'){var m=document.getElementById('startGameModal');if(m)m.style.display='flex';}
   if(id==='pvp'){pvpInit();}
   if(id==='v2play'){v2Init();}
+  if(id==='profile'){renderProfile();}
+  if(id==='story'){renderStory();}
   window.scrollTo(0,0);
 }
-/* all vars defined — safe to init now */
+/* init on DOM ready - only safe non-game setup */
+function _safeInit(){
+  try{if(typeof pbRender==='function')pbRender();}catch(e){}
+  try{if(typeof _loadPersist==='function')_loadPersist();}catch(e){}
+}
 if(document.readyState==='loading'){
-  document.addEventListener('DOMContentLoaded',function(){pbRender();pgInit();v2Init();});
+  document.addEventListener('DOMContentLoaded',_safeInit);
 }else{
-  pbRender();pgInit();v2Init();
+  _safeInit();
 }
 
+
+/* ─── PLAYER STATS & PROFILE ─── */
+var STATS_KEY='sbStats',PROFILE_KEY='sbProfile',STORY_KEY='sbStory';
+function statsLoad(){try{var s=localStorage.getItem(STATS_KEY);return s?JSON.parse(s):{wins:0,losses:0,vsCP:{wins:0,losses:0},pvp:{wins:0,losses:0},v2:{wins:0,losses:0},totalGames:0,totalTurns:0,clashStrikes:0,towersDestroyed:0,longestWinStreak:0,currentWinStreak:0,history:[]};}catch(e){return {wins:0,losses:0,vsCP:{wins:0,losses:0},pvp:{wins:0,losses:0},v2:{wins:0,losses:0},totalGames:0,totalTurns:0,clashStrikes:0,towersDestroyed:0,longestWinStreak:0,currentWinStreak:0,history:[]};}}
+function statsSave(s){try{localStorage.setItem(STATS_KEY,JSON.stringify(s));}catch(e){}}
+function profileLoad(){try{var p=localStorage.getItem(PROFILE_KEY);return p?JSON.parse(p):{name:'Trainer',title:'Rookie',avatar:'\u2694\ufe0f'};}catch(e){return {name:'Trainer',title:'Rookie',avatar:'\u2694\ufe0f'};}}
+function profileSave(p){try{localStorage.setItem(PROFILE_KEY,JSON.stringify(p));}catch(e){}}
+var AVATARS=['\u2694\ufe0f','\ud83d\udd25','\ud83d\udca7','\u26a1','\ud83d\udc09','\ud83d\udc51','\ud83d\udc80','\ud83e\udd81','\ud83d\udc3a','\ud83e\udd8a','\ud83e\udd16','\ud83e\uddd9'];
+var TITLES=[
+  {req:function(s){return s.totalGames===0;},title:'Rookie'},
+  {req:function(s){return s.totalGames>=1;},title:'Challenger'},
+  {req:function(s){return s.wins>=5;},title:'Fighter'},
+  {req:function(s){return s.wins>=10;},title:'Warrior'},
+  {req:function(s){return s.wins>=25;},title:'Champion'},
+  {req:function(s){return s.wins>=50;},title:'Elite'},
+  {req:function(s){return s.wins>=100;},title:'Legend'},
+  {req:function(s){return s.clashStrikes>=10;},title:'Clash Master'},
+  {req:function(s){return s.longestWinStreak>=5;},title:'On Fire \ud83d\udd25'},
+  {req:function(s){return s.towersDestroyed>=20;},title:'Tower Breaker'},
+];
+function getEarnedTitle(s){var t='Rookie';TITLES.forEach(function(T){if(T.req(s))t=T.title;});return t;}
+function recordGame(mode,won,stats){
+  var s=statsLoad();
+  s.totalGames++;s.totalTurns+=(stats&&stats.turns)||0;
+  s.clashStrikes+=(stats&&stats.clashStrikes)||0;
+  s.towersDestroyed+=(stats&&stats.towersDestroyed)||0;
+  if(won){s.wins++;s.currentWinStreak++;if(s.currentWinStreak>s.longestWinStreak)s.longestWinStreak=s.currentWinStreak;}
+  else{s.losses++;s.currentWinStreak=0;}
+  if(mode==='cpu'){if(won)s.vsCP.wins++;else s.vsCP.losses++;}
+  else if(mode==='pvp'){if(won)s.pvp.wins++;else s.pvp.losses++;}
+  else if(mode==='v2'){if(won)s.v2.wins++;else s.v2.losses++;}
+  var deckName=(ACTIVE_SLOT>=0&&SAVED_DECKS[ACTIVE_SLOT])?SAVED_DECKS[ACTIVE_SLOT].name:'Default';
+  s.history.unshift({mode:mode,won:won,deck:deckName,turns:(stats&&stats.turns)||0,date:new Date().toLocaleDateString(),cs:(stats&&stats.clashStrikes)||0});
+  if(s.history.length>20)s.history=s.history.slice(0,20);
+  statsSave(s);
+  var p=profileLoad();p.title=getEarnedTitle(s);profileSave(p);
+}
+function pgRecordWin(){var st={turns:PG.turn,clashStrikes:0,towersDestroyed:(PG.cpu.pA.fallen?1:0)+(PG.cpu.pB.fallen?1:0)};recordGame('cpu',true,st);}
+function pgRecordLoss(){recordGame('cpu',false,{turns:PG.turn,clashStrikes:0,towersDestroyed:0});}
+
+/* ─── PROFILE PAGE ─── */
+function setAvatar(av){var p=profileLoad();p.avatar=av;profileSave(p);renderProfile();}
+function updateProfileName(v){var p=profileLoad();p.name=v||'Trainer';profileSave(p);}
+function resetStats(){if(confirm('Reset all stats?')){localStorage.removeItem(STATS_KEY);renderProfile();}}
+function statBox(icon,label,val,color){return '<div style="background:rgba(255,255,255,.06);border-radius:10px;padding:10px 6px;text-align:center"><div style="font-size:1.2rem;margin-bottom:3px">'+icon+'</div><div style="font-family:\'Black Ops One\',cursive;font-size:.95rem;color:'+color+'">'+val+'</div><div style="font-size:.45rem;color:rgba(255,255,255,.35);letter-spacing:1px;margin-top:2px">'+label+'</div></div>';}
+function modeRow(label,wins,losses){var total=wins+losses,wr=total>0?Math.round(wins/total*100):0;return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="font-family:\'Black Ops One\',cursive;font-size:.55rem;color:rgba(255,255,255,.6);width:70px">'+label+'</div><div style="flex:1;height:6px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+wr+'%;background:linear-gradient(90deg,var(--el),#86efac);border-radius:3px"></div></div><div style="font-family:\'Black Ops One\',cursive;font-size:.55rem;color:rgba(255,255,255,.5);width:55px;text-align:right">'+wins+'-'+losses+'</div></div>';}
+function renderProfile(){
+  var el=document.getElementById('profileContent');if(!el)return;
+  var s=statsLoad(),p=profileLoad();
+  var wr=s.wins+s.losses>0?Math.round(s.wins/(s.wins+s.losses)*100):0;
+  var avatarHTML=AVATARS.map(function(av){return '<button onclick="setAvatar(\''+av+'\')" style="font-size:1.6rem;background:'+(p.avatar===av?'rgba(155,89,245,.3)':'rgba(255,255,255,.05)')+';border:'+(p.avatar===av?'2px solid var(--el)':'2px solid transparent')+';border-radius:10px;width:44px;height:44px;cursor:pointer">'+av+'</button>';}).join('');
+  el.innerHTML='<div style="text-align:center;padding:24px 16px 16px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:16px"><div style="font-size:4rem;margin-bottom:8px">'+p.avatar+'</div><input id="profileNameInput" value="'+p.name+'" style="font-family:\'Black Ops One\',cursive;font-size:1.1rem;color:#fff;background:rgba(255,255,255,.08);border:1.5px solid rgba(155,89,245,.4);border-radius:10px;padding:6px 12px;text-align:center;width:180px;margin-bottom:8px" maxlength="18" oninput="updateProfileName(this.value)"><br><div style="font-family:\'Black Ops One\',cursive;font-size:.55rem;letter-spacing:3px;color:var(--el);margin-bottom:12px">'+p.title+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:300px;margin:0 auto">'+avatarHTML+'</div></div>'
+    +'<div style="padding:0 16px 16px">'
+    +'<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:16px;margin-bottom:12px"><div style="font-family:\'Black Ops One\',cursive;font-size:.5rem;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:10px">\ud83d\udcca CAREER STATS</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">'+statBox('\u2694','WINS',s.wins,'#86efac')+statBox('\ud83d\udc80','LOSSES',s.losses,'#f87171')+statBox('\ud83c\udfae','GAMES',s.totalGames,'#93c5fd')+'</div>'
+    +'<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-family:\'Black Ops One\',cursive;font-size:.48rem;color:rgba(255,255,255,.4)">WIN RATE</span><span style="font-family:\'Black Ops One\',cursive;font-size:.75rem;color:'+(wr>=50?'#86efac':'#f87171')+'">'+wr+'%</span></div>'
+    +'<div style="height:8px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+wr+'%;background:linear-gradient(90deg,#7c3aed,#86efac);border-radius:4px"></div></div></div>'
+    +'<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:16px;margin-bottom:12px"><div style="font-family:\'Black Ops One\',cursive;font-size:.5rem;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:10px">\ud83c\udfaf BY MODE</div>'+modeRow('\u2694 vs CPU',s.vsCP&&s.vsCP.wins||0,s.vsCP&&s.vsCP.losses||0)+modeRow('\ud83e\udd1c 1v1',s.pvp&&s.pvp.wins||0,s.pvp&&s.pvp.losses||0)+modeRow('\ud83d\udc65 2v2',s.v2&&s.v2.wins||0,s.v2&&s.v2.losses||0)+'</div>'
+    +'<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:16px;margin-bottom:12px"><div style="font-family:\'Black Ops One\',cursive;font-size:.5rem;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:10px">\u2b50 HIGHLIGHTS</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+statBox('\ud83d\udd25','STREAK',s.currentWinStreak,'#fde68a')+statBox('\ud83c\udfc6','BEST',s.longestWinStreak,'#fde68a')+statBox('\u26a1','CLASH \u2728',s.clashStrikes,'#c4b5fd')+statBox('\ud83c\udff0','TOWERS',s.towersDestroyed,'#f87171')+'</div></div>'
+    +(s.history.length?'<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:16px;margin-bottom:12px"><div style="font-family:\'Black Ops One\',cursive;font-size:.5rem;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:10px">\ud83d\udccb RECENT</div>'+s.history.slice(0,8).map(function(g){return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)"><div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:'+(g.won?'rgba(61,186,106,.2)':'rgba(232,68,68,.2)')+'">'+( g.won?'\u2713':'\u2717')+'</div><div style="flex:1"><div style="font-family:\'Black Ops One\',cursive;font-size:.58rem;color:'+(g.won?'#86efac':'#f87171')+'">'+(g.won?'WIN':'LOSS')+' \u00b7 '+(g.mode==='cpu'?'vs CPU':g.mode==='pvp'?'1v1':'2v2')+'</div><div style="font-size:.55rem;color:rgba(255,255,255,.4)">'+g.deck+' \u00b7 '+g.turns+'t \u00b7 '+g.date+'</div></div></div>';}).join('')+'</div>':'')
+    +'<button onclick="resetStats()" style="width:100%;padding:12px;background:rgba(232,68,68,.08);border:1px solid rgba(232,68,68,.2);border-radius:12px;color:rgba(232,68,68,.7);font-family:\'Black Ops One\',cursive;font-size:.55rem;letter-spacing:2px;cursor:pointer">RESET ALL STATS</button></div>';
+}
+
+/* ─── STORY MODE ─── */
+var STORY_BATTLE_ACTIVE=null;
+var STORY_BATTLES=[
+  {id:1,name:'Goblin Scout',title:'Forest Outpost',description:'A scraggly goblin patrol guards the forest edge.',avatar:'\ud83d\udc7a',difficulty:1,kingHP:8,towerHP:6,deck:['gob','gob','skt','skt','bats_c','bats_c','knight_c','knight_c','zap_c','zap_c','musket','musket','valk','valk','zap_c','gob'],hint:'Tip: Fast units overwhelm weak defense.'},
+  {id:2,name:'Musketeer Squad',title:'River Crossing',description:'Ranged musketeers rain fire from across the river.',avatar:'\ud83c\udfaf',difficulty:2,kingHP:8,towerHP:6,deck:['musket','musket','musket','musket','icewiz','icewiz','zap_c','zap_c','knight_c','knight_c','valk','valk','fire_c','fire_c','skt','skt'],hint:'Tip: Deploy tanks to absorb ranged fire first.'},
+  {id:3,name:'Witch of the Swamp',title:'Haunted Swamp',description:'The Witch summons skeletons endlessly.',avatar:'\ud83e\uddd9\u200d\u2640\ufe0f',difficulty:2,kingHP:10,towerHP:7,deck:['witch_c','witch_c','necro_c','necro_c','tomb_c','tomb_c','skt','skt','bats_c','bats_c','gy_c','gy_c','tornado_c','tornado_c','valk','valk'],hint:'Tip: AoE spells destroy skeleton swarms.'},
+  {id:4,name:'Tesla Commander',title:'Electric Fortress',description:'A fortified position bristling with Tesla towers.',avatar:'\u26a1',difficulty:3,kingHP:10,towerHP:8,deck:['tesla_c','tesla_c','tesla_c','tesla_c','knight_c','knight_c','musket','musket','icewiz','icewiz','zap_c','zap_c','lightning_c','lightning_c','valk','valk'],hint:'Tip: Earthquake destroys buildings efficiently.'},
+  {id:5,name:'Ice Wizard',title:'Frozen Tundra',description:'The Ice Wizard freezes everything in its path.',avatar:'\ud83e\uddca',difficulty:3,kingHP:10,towerHP:8,deck:['icewiz','icewiz','iceg_c','iceg_c','knight_c','knight_c','valk','valk','musket','musket','tornado_c','tornado_c','zap_c','zap_c','tp_c','tp_c'],hint:'Tip: Keep deploying — frozen units thaw after 1 turn.'},
+  {id:6,name:'Dark Prince',title:'Shadow Castle',description:'The Dark Prince charges with devastating speed.',avatar:'\ud83d\udc19',difficulty:4,kingHP:12,towerHP:8,deck:['dp_c','dp_c','dp_c','dp_c','np_c','np_c','knight_c','knight_c','valk','valk','zap_c','zap_c','fire_c','fire_c','musket','musket'],hint:'Tip: Block charge units with cheap defenders.'},
+  {id:7,name:'Inferno Dragon',title:"Dragon's Peak",description:'A dragon that ramps up damage the longer it lives.',avatar:'\ud83d\udc09',difficulty:4,kingHP:12,towerHP:8,deck:['inf_c','inf_c','inf_c','bats_c','bats_c','dp_c','dp_c','wizard','wizard','fire_c','fire_c','zap_c','zap_c','valk','valk','knight_c'],hint:'Tip: Air units counter Dragons — deploy early.'},
+  {id:8,name:'Golem Warden',title:'Stone Citadel',description:'A massive Golem that splits on death.',avatar:'\ud83d\uddfff',difficulty:5,kingHP:12,towerHP:8,deck:['golem_c','golem_c','golem_c','necro_c','necro_c','wizard','wizard','lightning_c','lightning_c','zap_c','zap_c','tp_c','tp_c','musket','musket','bats_c'],hint:'Tip: Target Golem first.'},
+  {id:9,name:'\ud83d\udc51 THE SHADOW KING',title:'\u26a0\ufe0f FINAL BOSS',description:'The ruler of Shadow Crypt. Commands every unit at once.',avatar:'\ud83d\udc51',difficulty:5,kingHP:16,towerHP:12,isBoss:true,deck:['np_c','np_c','golem_c','golem_c','inf_c','inf_c','dp_c','dp_c','witch_c','witch_c','lightning_c','lightning_c','fire_c','fire_c','iceg_c','iceg_c'],hint:'Tip: Use your best deck. The King has everything.'}
+];
+function storyLoad(){try{var s=localStorage.getItem(STORY_KEY);return s?JSON.parse(s):{unlocked:1,completed:[]};}catch(e){return {unlocked:1,completed:[]};}}
+function storySave(s){try{localStorage.setItem(STORY_KEY,JSON.stringify(s));}catch(e){}}
+function storyStartBattle(battleId){
+  var battle=STORY_BATTLES[battleId-1];if(!battle)return;
+  var state=storyLoad();state.currentBattle=battleId;storySave(state);
+  STORY_BATTLE_ACTIVE=battleId;
+  var m=document.getElementById('startGameModal');if(m)m.style.display='none';
+  storyPgInit(battle);
+  go('play',null);
+}
+function storyPgInit(battle){
+  var _em=document.getElementById('endModal');if(_em)_em.classList.remove('show');
+  var allCards=G_CPU.concat(G_PL);
+  var cpuCards=[];
+  battle.deck.forEach(function(id){for(var i=0;i<allCards.length;i++){if(allCards[i].id===id){cpuCards.push(allCards[i]);break;}}});
+  if(!cpuCards.length)cpuCards=G_CPU.slice(0,16);
+  while(cpuCards.length<16)cpuCards=cpuCards.concat(cpuCards.slice(0,Math.min(8,cpuCards.length)));
+  cpuCards=cpuCards.slice(0,16);
+  var pd=ACTIVE_SLOT>=0&&SAVED_DECKS[ACTIVE_SLOT]?SAVED_DECKS[ACTIVE_SLOT].cards:G_PL;
+  PG={phase:'player',turn:1,si:-1,sc:null,cq:[],ci:0,
+    player:{elixir:2,hand:[],deck:gShuf(pd.slice()),_deckSrc:pd,units:{ba:[],bb:[],fa:[],fb:[],xa:[],xb:[]},pA:{w:0,max:8,fallen:false},pB:{w:0,max:8,fallen:false},king:{w:0,max:12,fallen:false}},
+    cpu:{elixir:2,hand:[],deck:gShuf(cpuCards.slice()),_deckSrc:cpuCards,units:{ba:[],bb:[],fa:[],fb:[],xa:[],xb:[]},pA:{w:0,max:battle.towerHP||8,fallen:false},pB:{w:0,max:battle.towerHP||8,fallen:false},king:{w:0,max:battle.kingHP||12,fallen:false}},
+  };
+  PG.player._deckSrc=pd;PG.cpu._deckSrc=cpuCards;
+  for(var i=0;i<4;i++){gDrw(PG.player);gDrw(PG.cpu);}
+  var lb=document.getElementById('playLog');if(lb)lb.innerHTML='';
+  pgLog('turn','\u2694 STORY: '+battle.title+' \u2014 '+battle.name);
+  pgLog('play',battle.hint||'');
+  pgRen();
+}
+function storyOnWin(){
+  if(!STORY_BATTLE_ACTIVE)return;
+  var bid=STORY_BATTLE_ACTIVE,battle=STORY_BATTLES[bid-1];
+  var state=storyLoad();
+  if(state.completed.indexOf(bid)===-1)state.completed.push(bid);
+  var next=bid+1;if(next<=STORY_BATTLES.length&&next>state.unlocked)state.unlocked=next;
+  state.currentBattle=null;storySave(state);
+  recordGame('cpu',true,{turns:PG.turn,clashStrikes:0,towersDestroyed:(PG.cpu.pA.fallen?1:0)+(PG.cpu.pB.fallen?1:0)});
+  var btn=document.getElementById('endModalBtn');
+  if(btn){
+    btn.textContent=battle.isBoss?'Return to Campaign':'Next Battle \u2192';
+    btn.onclick=function(){document.getElementById('endModal').classList.remove('show');STORY_BATTLE_ACTIVE=null;go('story',null);};
+  }
+}
+function renderStory(){
+  var el=document.getElementById('storyContent');if(!el)return;
+  var state=storyLoad();
+  var total=STORY_BATTLES.length,done=state.completed.length,pct=Math.round(done/total*100);
+  var html='<div style="padding:20px 16px 12px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:8px">'
+    +'<div style="font-family:\'Black Ops One\',cursive;font-size:1rem;color:#f87171;letter-spacing:2px;margin-bottom:4px">\u2694 CAMPAIGN</div>'
+    +'<div style="font-size:.7rem;color:rgba(255,255,255,.5);margin-bottom:10px">Defeat all 9 opponents to claim the crown</div>'
+    +'<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-family:\'Black Ops One\',cursive;font-size:.48rem;color:rgba(255,255,255,.4)">PROGRESS</span><span style="font-family:\'Black Ops One\',cursive;font-size:.6rem;color:#fde68a">'+done+'/'+total+'</span></div>'
+    +'<div style="height:8px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#ef4444,#f59e0b,#fde68a);border-radius:4px;transition:width .4s"></div></div></div>'
+    +'<div style="padding:8px 12px 60px;display:flex;flex-direction:column;gap:10px">';
+  STORY_BATTLES.forEach(function(b){
+    var unlocked=b.id<=state.unlocked,completed=state.completed.indexOf(b.id)!==-1,isCurrent=b.id===state.unlocked&&!completed;
+    var stars='';for(var d=0;d<b.difficulty;d++)stars+='\u2b50';
+    var borderCol=completed?'rgba(61,186,106,.5)':isCurrent?'rgba(245,200,66,.6)':b.isBoss?'rgba(232,68,68,.4)':'rgba(155,89,245,.25)';
+    var bgCol=completed?'rgba(61,186,106,.07)':isCurrent?'rgba(245,200,66,.07)':b.isBoss?'rgba(232,68,68,.08)':'rgba(255,255,255,.03)';
+    html+='<div style="border:1.5px solid '+borderCol+';background:'+bgCol+';border-radius:16px;padding:14px 16px;opacity:'+(unlocked?1:.4)+';">'
+      +'<div style="display:flex;align-items:center;gap:12px">'
+      +'<div style="font-size:'+(b.isBoss?'2.2rem':'1.8rem')+';width:48px;text-align:center;flex-shrink:0">'+b.avatar+'</div>'
+      +'<div style="flex:1">'
+      +'<div style="font-family:\'Black Ops One\',cursive;font-size:'+(b.isBoss?'.8rem':'.72rem')+';color:'+(completed?'#86efac':isCurrent?'#fde68a':b.isBoss?'#f87171':'#fff')+'">'+b.name+(completed?' \u2705':'')+'</div>'
+      +'<div style="font-size:.58rem;color:rgba(255,255,255,.4);margin-bottom:3px">'+b.title+'</div>'
+      +'<div style="font-size:.6rem;color:rgba(255,255,255,.55);margin-bottom:5px">'+b.description+'</div>'
+      +'<div style="font-size:.58rem">'+stars+' <span style="color:rgba(255,255,255,.3)">King: '+b.kingHP+'HP</span></div>'
+      +'</div></div>'
+      +(unlocked?'<button onclick="storyStartBattle('+b.id+')" style="width:100%;margin-top:10px;padding:13px;border-radius:12px;border:none;cursor:pointer;font-family:\'Black Ops One\',cursive;font-size:.65rem;letter-spacing:1px;'
+        +(completed?'background:rgba(61,186,106,.2);color:#86efac;border:1.5px solid rgba(61,186,106,.4)':b.isBoss?'background:linear-gradient(135deg,#7f1d1d,#ef4444);color:#fff':isCurrent?'background:linear-gradient(135deg,var(--el),#5820a0);color:#fff':'background:rgba(155,89,245,.15);color:#d8b4fe;border:1.5px solid rgba(155,89,245,.3)')
+        +'">'+( completed?'\u21ba Replay':'\u25b6 '+(b.isBoss?'FIGHT THE KING':'Start Battle'))+'</button>'
+      :'<div style="text-align:center;padding:8px 0 2px;font-size:.6rem;color:rgba(255,255,255,.2);font-family:\'Black Ops One\',cursive">\ud83d\udd12 LOCKED</div>')
+      +'</div>';
+  });
+  html+='</div>';
+  el.innerHTML=html;
+}
 </script>
 
 
@@ -6007,4 +6208,4 @@ if(document.readyState==='loading'){
 <div class="pb-popup" id="pbPopup"></div>
 </div></div>
 
-</body></html
+</body></html>
