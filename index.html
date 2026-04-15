@@ -3602,7 +3602,19 @@ function useSlot(si){
   var ok=REQS.every(function(r){return r.f(s.cards);})&&s.elixir.length===10;
   if(!ok){alert('Deck in Slot '+(si+1)+' is not valid. Load it and fix issues.');return;}
   ACTIVE_SLOT=si;_savePersist();renderSlots();renderDB();
-  alert('\u26a1 Deck "'+s.name+'" selected! Go to the Play tab and click Restart.');
+  /* Auto-navigate to play tab and restart with new deck */
+  pgInit();
+  var playTab=document.getElementById('pg-play');
+  if(playTab){
+    document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('on');});
+    playTab.classList.add('on');
+  }
+  /* Show toast confirmation */
+  var t=document.createElement('div');
+  t.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#1a0a3a;border:1.5px solid var(--el);color:#c090f5;padding:10px 20px;border-radius:10px;font-size:.7rem;font-family:Black Ops One,cursive;z-index:9999;letter-spacing:1px;box-shadow:0 4px 20px rgba(0,0,0,.5)';
+  t.textContent='⚡ DECK: '+s.name+' — LOADED!';
+  document.body.appendChild(t);
+  setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},2500);
 }
 function svToSlot(si){
   var ok=REQS.every(function(r){return r.f(deck);})&&eDeck.length===10;
@@ -3818,7 +3830,7 @@ function gPtok(u,own){
   var hpBadge='<div style="position:absolute;top:1px;right:1px;min-width:12px;height:12px;border-radius:50%;background:'+fc+';display:flex;align-items:center;justify-content:center;font-size:.28rem;font-family:Black Ops One,cursive;color:#fff;z-index:5;border:1px solid rgba(0,0,0,.6);padding:0 1px;box-sizing:border-box;line-height:1">'+hp+'</div>';
   var _d=JSON.stringify({name:u.name,type:u.type,speed:u.speed||'',elixir:u.elixir||0,wounds:u.wounds||0,w:u.w||0,passive:u.passive||'',special:u.special||u.cs||'',quote:u.quote||'',frozen:!!u.frozen,key:u.key||''});
   var safeData=encodeURIComponent(_d).replace(/%/g,'~');
-  return '<div class="ptok '+own+(u.frozen?' frozen':'')+'" onclick="pgUnitTap(this.dataset.u)" data-u="'+safeData+'" style="position:relative;width:36px;height:48px;border-radius:4px;overflow:hidden;border:1.5px solid;cursor:pointer;box-sizing:border-box;flex-shrink:0">'
+  return '<div class="ptok '+own+(u.frozen?' frozen':'')+'" onclick="pgUnitTap(this.dataset.u)" data-u="'+safeData+'" style="position:relative;border-radius:4px;overflow:hidden;border:1.5px solid;cursor:pointer;box-sizing:border-box">'
     +art+hpBadge
     +'</div>';
 }
@@ -5643,7 +5655,19 @@ function pgRoll(){
   pgLog(cs?'cs':w===0?'atk':'dmg',(side==='player'?'Your ':'CPU ')+u.name+' D20:'+roll+(cs?' \u26a1 CS!':w===0?' MISS':' = '+wd+'w'));
   if(targets.length){
     targets[0].w+=wd;
-    showDmgPop(wd,enSide);
+    /* Show damage pop over the ATTACKER (u) not the target */
+    (function(attacker, atkSide){
+      pgBd();
+      var board=document.getElementById('playBoard');
+      var tokEl=null;
+      if(board){
+        var allToks=board.querySelectorAll('.ptok');
+        for(var _ti=0;_ti<allToks.length;_ti++){
+          try{var _ud=JSON.parse(decodeURIComponent(allToks[_ti].dataset.u.replace(/~/g,'%')));if(_ud.name===attacker.name){tokEl=allToks[_ti];break;}}catch(e){}
+        }
+      }
+      showDmgPop(wd,atkSide,tokEl);
+    })(u, side);
     pgKill(enSide,lane);
     if(cs)pgDoCS(u,side,lane,enSide,pgAllUnits(enSide,lane));
   } else if(canTower){
@@ -5654,12 +5678,35 @@ function pgRoll(){
     var tw=lane==='a'?(side==='player'?PG.cpu.pA:PG.player.pA):(side==='player'?PG.cpu.pB:PG.player.pB);
     var canKing=side==='player'?cpAny:plAny;
     if(!tw.fallen){
-      var _twDmg=Math.max(1,wd);tw.w=Math.min(tw.max,tw.w+_twDmg);showDmgPop(_twDmg,'tower');
+      var _twDmg=Math.max(1,wd);tw.w=Math.min(tw.max,tw.w+_twDmg);
+      (function(){
+        pgBd();
+        var board=document.getElementById('playBoard');
+        var twEl=null;
+        if(board){
+          /* cpu towers=.t2, player towers=.t1; lane a=index 0, b=index 1 */
+          var cls=side==='player'?'.pb-tow-zone.t2':'.pb-tow-zone.t1';
+          var tws=board.querySelectorAll(cls);
+          twEl=tws[lane==='a'?0:1]||null;
+        }
+        showDmgPop(_twDmg,'tower',twEl);
+      })();
       pgLog('tower',u.name+' \u2192 Tower '+lane.toUpperCase()+' +'+_twDmg+'w ('+tw.w+'/'+tw.max+')');
       if(tw.w>=tw.max){tw.fallen=true;pgLog('cs','TOWER '+lane.toUpperCase()+' FALLS!');}
     } else if(canKing){
       var kg=side==='player'?PG.cpu.king:PG.player.king;
-      var _kDmg=Math.max(1,wd);kg.w=Math.min(kg.max||12,kg.w+_kDmg);showDmgPop(_kDmg,'tower');
+      var _kDmg=Math.max(1,wd);kg.w=Math.min(kg.max||12,kg.w+_kDmg);
+      (function(){
+        pgBd();
+        var board=document.getElementById('playBoard');
+        var kgEl=null;
+        if(board){
+          /* cpu king=first .pb-king-zone, player king=last */
+          var kgs=board.querySelectorAll('.pb-king-zone');
+          kgEl=side==='player'?kgs[0]:kgs[kgs.length-1]||null;
+        }
+        showDmgPop(_kDmg,'tower',kgEl);
+      })();
       pgLog('dmg',u.name+' \u2192 KING +'+_kDmg+'w ('+kg.w+'/'+(kg.max||12)+')'); 
       if(kg.w>=12)kg.fallen=true;
     } else {
@@ -5675,16 +5722,42 @@ function pgRoll(){
 }
 function pgTow(){
   pgLog('tower','-- Towers fire -- Princess: 1w/turn each lane · King: 2w/turn both lanes --');
+  function getTokEl(unitName, board){
+    if(!board) return null;
+    var toks=board.querySelectorAll('.ptok');
+    for(var _i=0;_i<toks.length;_i++){
+      try{var _d=JSON.parse(decodeURIComponent(toks[_i].dataset.u.replace(/~/g,'%')));if(_d.name===unitName)return toks[_i];}catch(e){}
+    }
+    return null;
+  }
+  function getTowEl(isPlayer, lane, board){
+    if(!board) return null;
+    var cls=isPlayer?'.pb-tow-zone.t1':'.pb-tow-zone.t2';
+    var els=board.querySelectorAll(cls);
+    return els[lane==='a'?0:1]||null;
+  }
+  function getKingEl(isPlayer, board){
+    if(!board) return null;
+    var els=board.querySelectorAll('.pb-king-zone');
+    return isPlayer?els[els.length-1]:els[0]||null;
+  }
   /* Princess Towers: lane-specific, reach Neutral + enemy Front only (not Back) */
   function princessShoot(tower, lbl, atkSide, lane, killSide){
     if(tower.fallen) return;
-    /* Only hit units in Neutral zone or Front zone of this lane — NOT Back row */
     var u = PG[atkSide].units;
-    var targets = u['x'+lane].concat(u['f'+lane]); /* neutral first, then front */
+    var targets = u['x'+lane].concat(u['f'+lane]);
     if(!targets.length) return;
     targets[0].w += 1;
     pgLog('tower', lbl + ' \u2192 1w to ' + targets[0].name);
     pgKill(killSide, lane);
+    /* Show popup on the tower that fired AND on the unit that got hit */
+    pgBd();
+    var board=document.getElementById('playBoard');
+    var isPlayerTow=(atkSide==='cpu'); /* cpu units hit = player tower fired */
+    var towEl=getTowEl(isPlayerTow, lane, board);
+    var unitEl=getTokEl(targets[0].name, board);
+    showDmgPop(1,'tower',towEl);
+    setTimeout(function(){showDmgPop(1,killSide,unitEl);},200);
   }
   /* Lane A princess towers */
   princessShoot(PG.cpu.pA,    'CPU Tower A',  'player', 'a', 'player');
@@ -5692,27 +5765,33 @@ function pgTow(){
   /* Lane B princess towers */
   princessShoot(PG.cpu.pB,    'CPU Tower B',  'player', 'b', 'player');
   princessShoot(PG.player.pB, 'Your Tower B', 'cpu',    'b', 'cpu');
-  /* King Tower: both lanes, Neutral + Front only (not Back) */
+  /* King Tower */
   var cpAny = PG.cpu.pA.fallen  || PG.cpu.pB.fallen;
   var plAny = PG.player.pA.fallen || PG.player.pB.fallen;
   if(cpAny && !PG.cpu.king.fallen){
     var kpTgts = PG.player.units.xa.concat(PG.player.units.fa)
                  .concat(PG.player.units.xb).concat(PG.player.units.fb);
     if(kpTgts.length){
-      kpTgts[0].w += 1;
-      kpTgts[0].w += 1;  /* King fires 2w total (2nd wound) */
+      kpTgts[0].w += 2;
       pgLog('tower','CPU KING \u2192 2w to your ' + kpTgts[0].name);
       pgKill('player','a'); pgKill('player','b');
+      pgBd();
+      var board2=document.getElementById('playBoard');
+      showDmgPop(2,'tower',getKingEl(false,board2));
+      setTimeout(function(){showDmgPop(2,'player',getTokEl(kpTgts[0].name,document.getElementById('playBoard')));},200);
     }
   }
   if(plAny && !PG.player.king.fallen){
     var kcTgts = PG.cpu.units.xa.concat(PG.cpu.units.fa)
                  .concat(PG.cpu.units.xb).concat(PG.cpu.units.fb);
     if(kcTgts.length){
-      kcTgts[0].w += 1;
-      kcTgts[0].w += 1;  /* King fires 2w total */
+      kcTgts[0].w += 2;
       pgLog('atk','Your KING \u2192 2w to CPU ' + kcTgts[0].name);
       pgKill('cpu','a'); pgKill('cpu','b');
+      pgBd();
+      var board3=document.getElementById('playBoard');
+      showDmgPop(2,'tower',getKingEl(true,board3));
+      setTimeout(function(){showDmgPop(2,'cpu',getTokEl(kcTgts[0].name,document.getElementById('playBoard')));},200);
     }
   }
   pgWin();
@@ -6210,25 +6289,22 @@ function renderStory(){
 }
 
 /* ── Damage Popup ── */
-function showDmgPop(wounds, side){
+function showDmgPop(wounds, side, targetEl){
   if(!wounds||wounds<=0)return;
-  var board=document.getElementById('playBoard')||document.getElementById('pvpBoard')||document.getElementById('v2Board');
-  if(!board)return;
-  var rect=board.getBoundingClientRect();
-  if(!rect.width)return;
-  /* Position: random x within board, y varies by side (cpu=top third, player=bottom third) */
-  var x=rect.left + rect.width*(0.15+Math.random()*0.7);
-  var y;
-  if(side==='cpu') y=rect.top + rect.height*(0.1+Math.random()*0.35);
-  else if(side==='tower') y=rect.top + rect.height*(0.05+Math.random()*0.15);
-  else y=rect.top + rect.height*(0.55+Math.random()*0.35);
   var col=wounds>=3?'#f87171':wounds===2?'#fb923c':'#fde68a';
   var el=document.createElement('div');
   el.className='dmg-pop';
-  el.style.left=x+'px';
-  el.style.top=y+'px';
   el.style.color=col;
   el.textContent='-'+wounds+'w';
+  /* Position directly over the target element using fixed coords from viewport */
+  if(targetEl && targetEl.getBoundingClientRect){
+    var r=targetEl.getBoundingClientRect();
+    el.style.left=(r.left + r.width/2 - 12)+'px';
+    el.style.top=(r.top)+'px';
+  } else {
+    el.style.left='50%';
+    el.style.top='40%';
+  }
   document.body.appendChild(el);
   setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},1150);
 }
