@@ -1820,6 +1820,18 @@ body.on-pvp .game-board{overflow:hidden!important;flex:1 1 0!important}
   white-space:nowrap;
   letter-spacing:1px;
 }
+.def-pop {
+  position:fixed;
+  pointer-events:none;
+  font-family:'Black Ops One',cursive;
+  font-size:.7rem;
+  text-shadow:0 1px 6px rgba(0,0,0,1);
+  z-index:8889;
+  animation:dmgFloat 1.4s ease-out forwards;
+  white-space:nowrap;
+  letter-spacing:1px;
+  color:#f87171;
+}
 </style>
 
 
@@ -5175,6 +5187,23 @@ function pgKill(side,lane){
     var dead=arr.filter(function(u){return u.w>=(u.wounds||4);});
     dead.forEach(function(u){
       pgLog('die','\u2620 '+u.name+' eliminated!');
+      /* Show defeated popup - find token NOW before any re-render */
+      (function(dname){
+        var tokEl=null;
+        var boards=['playBoard','pvpBoard','v2Board'];
+        for(var _bi=0;_bi<boards.length&&!tokEl;_bi++){
+          var _b=document.getElementById(boards[_bi]);
+          if(!_b) continue;
+          var _toks=_b.querySelectorAll('.ptok');
+          for(var _di=0;_di<_toks.length;_di++){
+            try{var _dd=JSON.parse(decodeURIComponent(_toks[_di].dataset.u.replace(/~/g,'%')));if(_dd.name===dname){tokEl=_toks[_di];break;}}catch(e){}
+          }
+        }
+        /* Capture rect immediately before token disappears */
+        var rect=tokEl?tokEl.getBoundingClientRect():null;
+        var fakeEl=rect&&(rect.width||rect.height)?{getBoundingClientRect:function(){return rect;}}:null;
+        showDefPop(dname, fakeEl||tokEl);
+      })(u.name);
       var pas=u.passive||'';
       var nm=(u.name||'').toUpperCase();
       /* ── ON DEATH: +1w to killer ── */
@@ -5655,19 +5684,24 @@ function pgRoll(){
   pgLog(cs?'cs':w===0?'atk':'dmg',(side==='player'?'Your ':'CPU ')+u.name+' D20:'+roll+(cs?' \u26a1 CS!':w===0?' MISS':' = '+wd+'w'));
   if(targets.length){
     targets[0].w+=wd;
-    /* Show damage pop over the ATTACKER (u) not the target */
-    (function(attacker, atkSide){
+    /* Show popup on BOTH attacker and target simultaneously */
+    (function(attacker, target, atkSide, defSide){
       pgBd();
       var board=document.getElementById('playBoard');
-      var tokEl=null;
+      var atkEl=null, defEl=null;
       if(board){
         var allToks=board.querySelectorAll('.ptok');
         for(var _ti=0;_ti<allToks.length;_ti++){
-          try{var _ud=JSON.parse(decodeURIComponent(allToks[_ti].dataset.u.replace(/~/g,'%')));if(_ud.name===attacker.name){tokEl=allToks[_ti];break;}}catch(e){}
+          try{
+            var _ud=JSON.parse(decodeURIComponent(allToks[_ti].dataset.u.replace(/~/g,'%')));
+            if(_ud.name===attacker.name && !atkEl) atkEl=allToks[_ti];
+            if(_ud.name===target.name && !defEl) defEl=allToks[_ti];
+          }catch(e){}
         }
       }
-      showDmgPop(wd,atkSide,tokEl);
-    })(u, side);
+      showDmgPop(wd,atkSide,atkEl);
+      showDmgPop(wd,defSide,defEl);
+    })(u, targets[0], side, enSide);
     pgKill(enSide,lane);
     if(cs)pgDoCS(u,side,lane,enSide,pgAllUnits(enSide,lane));
   } else if(canTower){
@@ -5679,34 +5713,42 @@ function pgRoll(){
     var canKing=side==='player'?cpAny:plAny;
     if(!tw.fallen){
       var _twDmg=Math.max(1,wd);tw.w=Math.min(tw.max,tw.w+_twDmg);
-      (function(){
+      (function(atk){
         pgBd();
         var board=document.getElementById('playBoard');
-        var twEl=null;
+        var twEl=null, atkEl=null;
         if(board){
-          /* cpu towers=.t2, player towers=.t1; lane a=index 0, b=index 1 */
           var cls=side==='player'?'.pb-tow-zone.t2':'.pb-tow-zone.t1';
           var tws=board.querySelectorAll(cls);
           twEl=tws[lane==='a'?0:1]||null;
+          var allToks=board.querySelectorAll('.ptok');
+          for(var _i=0;_i<allToks.length;_i++){
+            try{var _d=JSON.parse(decodeURIComponent(allToks[_i].dataset.u.replace(/~/g,'%')));if(_d.name===atk.name){atkEl=allToks[_i];break;}}catch(e){}
+          }
         }
         showDmgPop(_twDmg,'tower',twEl);
-      })();
+        showDmgPop(_twDmg,side,atkEl);
+      })(u);
       pgLog('tower',u.name+' \u2192 Tower '+lane.toUpperCase()+' +'+_twDmg+'w ('+tw.w+'/'+tw.max+')');
       if(tw.w>=tw.max){tw.fallen=true;pgLog('cs','TOWER '+lane.toUpperCase()+' FALLS!');}
     } else if(canKing){
       var kg=side==='player'?PG.cpu.king:PG.player.king;
       var _kDmg=Math.max(1,wd);kg.w=Math.min(kg.max||12,kg.w+_kDmg);
-      (function(){
+      (function(atk){
         pgBd();
         var board=document.getElementById('playBoard');
-        var kgEl=null;
+        var kgEl=null, atkEl=null;
         if(board){
-          /* cpu king=first .pb-king-zone, player king=last */
           var kgs=board.querySelectorAll('.pb-king-zone');
           kgEl=side==='player'?kgs[0]:kgs[kgs.length-1]||null;
+          var allToks=board.querySelectorAll('.ptok');
+          for(var _i=0;_i<allToks.length;_i++){
+            try{var _d=JSON.parse(decodeURIComponent(allToks[_i].dataset.u.replace(/~/g,'%')));if(_d.name===atk.name){atkEl=allToks[_i];break;}}catch(e){}
+          }
         }
         showDmgPop(_kDmg,'tower',kgEl);
-      })();
+        showDmgPop(_kDmg,side,atkEl);
+      })(u);
       pgLog('dmg',u.name+' \u2192 KING +'+_kDmg+'w ('+kg.w+'/'+(kg.max||12)+')'); 
       if(kg.w>=12)kg.fallen=true;
     } else {
@@ -5757,7 +5799,7 @@ function pgTow(){
     var towEl=getTowEl(isPlayerTow, lane, board);
     var unitEl=getTokEl(targets[0].name, board);
     showDmgPop(1,'tower',towEl);
-    setTimeout(function(){showDmgPop(1,killSide,unitEl);},200);
+    showDmgPop(1,killSide,unitEl);
   }
   /* Lane A princess towers */
   princessShoot(PG.cpu.pA,    'CPU Tower A',  'player', 'a', 'player');
@@ -5778,7 +5820,7 @@ function pgTow(){
       pgBd();
       var board2=document.getElementById('playBoard');
       showDmgPop(2,'tower',getKingEl(false,board2));
-      setTimeout(function(){showDmgPop(2,'player',getTokEl(kpTgts[0].name,document.getElementById('playBoard')));},200);
+      showDmgPop(2,'player',getTokEl(kpTgts[0].name,board2));
     }
   }
   if(plAny && !PG.player.king.fallen){
@@ -5791,7 +5833,7 @@ function pgTow(){
       pgBd();
       var board3=document.getElementById('playBoard');
       showDmgPop(2,'tower',getKingEl(true,board3));
-      setTimeout(function(){showDmgPop(2,'cpu',getTokEl(kcTgts[0].name,document.getElementById('playBoard')));},200);
+      showDmgPop(2,'cpu',getTokEl(kcTgts[0].name,board3));
     }
   }
   pgWin();
@@ -6307,6 +6349,39 @@ function showDmgPop(wounds, side, targetEl){
   }
   document.body.appendChild(el);
   setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},1150);
+}
+function showDefPop(name, targetEl){
+  var el=document.createElement('div');
+  el.className='def-pop';
+  el.textContent='💀 '+name+' defeated!';
+  /* Try passed element first, then search all boards */
+  var x=null,y=null;
+  function tryEl(e){
+    if(!e) return false;
+    var r=e.getBoundingClientRect();
+    if(r.width>0||r.height>0){x=r.left+r.width/2-60;y=r.top;return true;}
+    return false;
+  }
+  if(!tryEl(targetEl)){
+    /* Search all game boards for a token matching this name */
+    var boards=['playBoard','pvpBoard','v2Board'];
+    for(var bi=0;bi<boards.length;bi++){
+      var board=document.getElementById(boards[bi]);
+      if(!board) continue;
+      var toks=board.querySelectorAll('.ptok');
+      for(var ti=0;ti<toks.length;ti++){
+        try{
+          var d=JSON.parse(decodeURIComponent(toks[ti].dataset.u.replace(/~/g,'%')));
+          if(d.name===name && tryEl(toks[ti])) break;
+        }catch(e2){}
+      }
+      if(x!==null) break;
+    }
+  }
+  if(x!==null){el.style.left=x+'px';el.style.top=y+'px';}
+  else{el.style.left='50vw';el.style.top='40vh';el.style.transform='translateX(-50%)';}
+  document.body.appendChild(el);
+  setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},1400);
 }
 </script>
 
